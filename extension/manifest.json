@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "SplitWire Browser",
+  "version": "1.2.0",
+  "description": "SplitWire-Turkey tarayıcı sürümü — dosya çalıştırmadan tek tıkla bölünmüş tünelleme (Split Tunnel) ve düşük gecikmeli Avrupa sunucu seçimi.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "SplitWire Browser",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "proxy",
+    "storage",
+    "privacy",
+    "alarms",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://api.proxyscrape.com/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://proxylist.geonode.com/*",
+    "https://cp.cloudflare.com/*",
+    "https://1.1.1.1/*",
+    "https://1.0.0.1/*",
+    "https://one.one.one.one/*",
+    "https://cloudflare-dns.com/*",
+    "https://connectivitycheck.gstatic.com/*",
+    "https://www.gstatic.com/*",
+    "https://clients3.google.com/*",
+    "https://www.google.com/*",
+    "https://detectportal.firefox.com/*"
+  ]
+}

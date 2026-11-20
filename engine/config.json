@@ -1,0 +1,7 @@
+{
+  "proxyHost": "127.0.0.1",
+  "proxyPort": 8080,
+  "controlPort": 8081,
+  "preset": "ttnet",
+  "dohProvider": "cloudflare"
+}

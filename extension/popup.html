@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SplitWire Browser</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Top Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-logo" id="brandLogo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M11 3L4 6.2V12.8L11 20.5V3Z" fill="currentColor" opacity="0.95"/>
+            <path d="M13 3L20 6.2V12.8L13 20.5V3Z" fill="currentColor" opacity="0.55"/>
+            <path d="M13.2 6.5L9.5 12.2H12.3L10.8 17.5L14.5 11.8H11.7L13.2 6.5Z" fill="var(--bg)"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">SplitWire</span>
+          <span class="brand-sub" data-i18n="appSubtitle">Bölünmüş Tünel · Dosyasız</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="icon-btn" id="langBtn" title="TR / EN" aria-label="Language">
+          <span id="langLabel">TR</span>
+        </button>
+        <button class="icon-btn" id="themeBtn" title="Tema" aria-label="Theme">
+          <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+          <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" role="tablist">
+      <button class="nav-tab active" data-tab="connect" role="tab" aria-selected="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+          <line x1="12" y1="2" x2="12" y2="12"/>
+        </svg>
+        <span data-i18n="tabConnect">Bağlantı</span>
+      </button>
+      <button class="nav-tab" data-tab="domains" role="tab" aria-selected="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        <span data-i18n="tabDomains">Siteler</span>
+      </button>
+      <button class="nav-tab" data-tab="settings" role="tab" aria-selected="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="4" y1="21" x2="4" y2="14"/>
+          <line x1="4" y1="10" x2="4" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12" y2="3"/>
+          <line x1="20" y1="21" x2="20" y2="16"/>
+          <line x1="20" y1="12" x2="20" y2="3"/>
+          <line x1="1" y1="14" x2="7" y2="14"/>
+          <line x1="9" y1="8" x2="15" y2="8"/>
+          <line x1="17" y1="16" x2="23" y2="16"/>
+        </svg>
+        <span data-i18n="tabSettings">Ayarlar</span>
+      </button>
+    </nav>
+
+    <!-- Main Scrollable Content -->
+    <main class="content">
+      <!-- ==================== TAB 1: CONNECT ==================== -->
+      <section class="tab-panel active" id="panel-connect">
+        <!-- Hero Power Area -->
+        <div class="hero" id="heroArea">
+          <div class="hero-glow"></div>
+          <button class="power-btn" id="powerBtn" aria-label="Bağlan">
+            <span class="power-ring"></span>
+            <span class="power-core">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                <line x1="12" y1="2" x2="12" y2="11"/>
+              </svg>
+            </span>
+          </button>
+
+          <div class="status-block">
+            <div class="status-title" id="statusTitle" data-i18n="statusDisconnected">Bağlı Değil</div>
+            <div class="status-meta">
+              <span class="pill" id="engineStatusPill">
+                <span class="dot" id="engineDot"></span>
+                <span id="engineStatusText">Tarayıcı İçi · Dosyasız</span>
+              </span>
+              <span class="timer hidden" id="sessionTimer">00:00:00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Browser-Only Server Bar (Zero Local File Mode) -->
+        <div class="card server-card" id="browserServerCard">
+          <div class="server-row">
+            <div class="server-info">
+              <span class="country-badge" id="serverCountryBadge">EU</span>
+              <div class="server-meta">
+                <div class="server-name" id="serverNameText" data-i18n="serverNone">Henüz sunucu seçilmedi</div>
+                <div class="server-sub" id="serverSubText" data-i18n="serverHttpsNote">Yalnızca uçtan uca şifreli HTTPS/WSS bağlantıları tünellenir.</div>
+              </div>
+            </div>
+            <div class="server-actions">
+              <button class="mini-btn" id="switchServerBtn" title="Sunucu Değiştir" data-i18n="serverSwitch">Değiştir</button>
+              <button class="mini-btn icon-only" id="refreshServerBtn" title="Yeni Sunucu Tara" aria-label="Refresh">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inline Engine Offline Notice (shown only when local SplitWire mode & engine offline) -->
+        <div class="alert-banner hidden" id="engineWarningBanner">
+          <div class="alert-icon">!</div>
+          <div class="alert-body">
+            <div class="alert-title" data-i18n="engineWarningTitle">Yerel DPI motoru çalışmıyor</div>
+            <div class="alert-text" data-i18n="engineWarningBody">
+              Dosyasız kullanmak için Ayarlar sekmesinden "Tarayıcı İçi (Dosyasız)" modunu seçin veya Start-SplitWire-Engine.bat dosyasını çalıştırın.
+            </div>
+            <button class="link-btn" id="switchToBrowserFromWarn" data-i18n="engineWarningSwitch">Dosyasız Moda Geç</button>
+          </div>
+        </div>
+
+        <!-- Tunnel Mode Selector -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-label" data-i18n="tunnelModeLabel">Tünel Modu</span>
+          </div>
+          <div class="segmented" id="tunnelModeGroup">
+            <button class="seg-btn active" data-mode="split" data-i18n="modeSplit">Bölünmüş Tünel</button>
+            <button class="seg-btn" data-mode="full" data-i18n="modeFull">Tüm Tarayıcı</button>
+          </div>
+          <p class="card-hint" id="tunnelModeHint" data-i18n="modeSplitHint">
+            Sadece seçili siteler tünellenir, internet hızınız düşmez.
+          </p>
+        </div>
+
+        <!-- Quick Platform Toggles (Split Tunnel) -->
+        <div class="card" id="quickPlatformsCard">
+          <div class="card-head">
+            <span class="card-label" data-i18n="quickPlatforms">Hızlı Platformlar</span>
+            <button class="link-btn" id="manageDomainsBtn">
+              <span id="activeDomainCount">17 alan adı</span>
+            </button>
+          </div>
+
+          <div class="platform-list">
+            <label class="platform-row">
+              <div class="platform-info">
+                <span class="platform-badge discord">D</span>
+                <div>
+                  <div class="platform-name">Discord</div>
+                  <div class="platform-desc" data-i18n="discordDesc">discord.com, discord.gg, ses &amp; CDN</div>
+                </div>
+              </div>
+              <input type="checkbox" class="toggle" data-platform="discord" checked />
+            </label>
+
+            <label class="platform-row">
+              <div class="platform-info">
+                <span class="platform-badge roblox">R</span>
+                <div>
+                  <div class="platform-name">Roblox</div>
+                  <div class="platform-desc" data-i18n="robloxDesc">roblox.com, rbxcdn, doğrulama</div>
+                </div>
+              </div>
+              <input type="checkbox" class="toggle" data-platform="roblox" checked />
+            </label>
+
+            <label class="platform-row">
+              <div class="platform-info">
+                <span class="platform-badge wattpad">W</span>
+                <div>
+                  <div class="platform-name">Wattpad</div>
+                  <div class="platform-desc" data-i18n="wattpadDesc">wattpad.com, w.tt</div>
+                </div>
+              </div>
+              <input type="checkbox" class="toggle" data-platform="wattpad" checked />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 2: DOMAINS ==================== -->
+      <section class="tab-panel" id="panel-domains">
+        <!-- Add Custom Domain -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-label" data-i18n="addDomainTitle">Özel Alan Adı Ekle</span>
+            <button class="chip-action-btn" id="addCurrentTabBtn">
+              <span>+</span>
+              <span data-i18n="addCurrentTab">Bu Sekmeyi Ekle</span>
+            </button>
+          </div>
+          <form class="input-row" id="addDomainForm">
+            <input
+              type="text"
+              id="domainInput"
+              class="text-input"
+              placeholder="örnek: site.com"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="submit" class="btn-primary" data-i18n="addBtn">Ekle</button>
+          </form>
+
+          <div class="sub-label" data-i18n="customDomainsTitle">Özel Siteler</div>
+          <div class="chip-list" id="customDomainList"></div>
+        </div>
+
+        <!-- Exclusions (Always Direct in Full Mode) -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-label" data-i18n="exclusionsTitle">Dışlama Listesi (Her Zaman Direkt)</span>
+          </div>
+          <p class="card-hint" data-i18n="exclusionsHint">
+            Tüm Tarayıcı modunda bankacılık ve e-Devlet gibi siteler doğrudan bağlanır.
+          </p>
+          <form class="input-row" id="addExclusionForm">
+            <input
+              type="text"
+              id="exclusionInput"
+              class="text-input"
+              placeholder="örnek: bankam.com.tr"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="submit" class="btn-secondary" data-i18n="addBtn">Ekle</button>
+          </form>
+          <div class="chip-list" id="exclusionList"></div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 3: SETTINGS ==================== -->
+      <section class="tab-panel" id="panel-settings">
+        <!-- Connection Engine Mode -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-label" data-i18n="engineModeTitle">Bağlantı Yöntemi</span>
+          </div>
+          <div class="engine-grid" id="engineModeGrid">
+            <button class="engine-card active" data-engine="browser">
+              <div class="engine-card-title" data-i18n="engineBrowser">Tarayıcı İçi (Dosyasız)</div>
+              <div class="engine-card-sub" data-i18n="engineBrowserSub">Kurulumsuz · Otomatik Avrupa SOCKS5</div>
+            </button>
+            <button class="engine-card" data-engine="custom">
+              <div class="engine-card-title" data-i18n="engineCustom">Özel Proxy / VPN</div>
+              <div class="engine-card-sub" data-i18n="engineCustomSub">Kendi sunucunuz · Dosyasız</div>
+            </button>
+            <button class="engine-card" data-engine="splitwire">
+              <div class="engine-card-title" data-i18n="engineSplitwire">SplitWire DPI (Yerel)</div>
+              <div class="engine-card-sub" data-i18n="engineSplitwireSub">Tam hız · Sürücüsüz yerel motor</div>
+            </button>
+            <button class="engine-card" data-engine="byedpi">
+              <div class="engine-card-title" data-i18n="engineByedpi">ByeDPI / WARP</div>
+              <div class="engine-card-sub" data-i18n="engineByedpiSub">Yerel SOCKS5 (1080 / 40000)</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- In-Browser Zero-File Region Settings -->
+        <div class="card" id="browserModeSettingsCard">
+          <div class="field">
+            <label class="field-label" for="regionSelect" data-i18n="browserRegionTitle">Tercih Edilen Bölge</label>
+            <select id="regionSelect" class="select-input">
+              <option value="eu" data-i18n="regionEu">Avrupa (Önerilen — En Düşük Ping)</option>
+              <option value="DE" data-i18n="regionDe">Almanya (DE)</option>
+              <option value="NL" data-i18n="regionNl">Hollanda (NL)</option>
+              <option value="all" data-i18n="regionAll">Tüm Dünya (Geniş Havuz)</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" id="findNewServersBtn" data-i18n="findNewServersBtn">Yeni Sunucu Tara</button>
+            <button class="btn-ghost" id="openBrowserDnsBtnTop" data-i18n="openBrowserDns">Tarayıcı Güvenli DNS Ayarını Aç</button>
+          </div>
+        </div>
+
+        <!-- Local ByeDPI / WARP Port Card -->
+        <div class="card hidden" id="localSocksCard">
+          <div class="card-head">
+            <span class="card-label" data-i18n="localSocksTitle">Yerel SOCKS5 Portu</span>
+          </div>
+          <div class="btn-row">
+            <button class="btn-secondary" id="presetByedpiPortBtn" data-i18n="useByedpiPort">ByeDPI (1080)</button>
+            <button class="btn-secondary" id="presetWarpPortBtn" data-i18n="useWarpPort">WARP (40000)</button>
+          </div>
+        </div>
+
+        <!-- SplitWire DPI Options (shown when engine === 'splitwire') -->
+        <div class="card hidden" id="dpiSettingsCard">
+          <div class="field">
+            <label class="field-label" for="presetSelect" data-i18n="dpiPresetTitle">DPI Stratejisi (İSS Ön Ayarı)</label>
+            <select id="presetSelect" class="select-input">
+              <option value="auto" data-i18n="presetAuto">Otomatik (Önerilen — TLS Rec + SNI)</option>
+              <option value="ttnet" data-i18n="presetTtnet">Türk Telekom / TTNET (TLS 1+s)</option>
+              <option value="superonline" data-i18n="presetSuperonline">Superonline (Agresif Çoklu Parça)</option>
+              <option value="vodafone" data-i18n="presetVodafone">Vodafone / Kablonet (TCP Split)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="dohSelect" data-i18n="dohTitle">Şifreli DNS (DoH)</label>
+            <select id="dohSelect" class="select-input">
+              <option value="cloudflare">Cloudflare (1.1.1.1)</option>
+              <option value="google">Google (8.8.8.8)</option>
+              <option value="quad9">Quad9 (9.9.9.9)</option>
+              <option value="adguard">AdGuard DNS</option>
+            </select>
+          </div>
+
+          <button class="btn-ghost full-width" id="openBrowserDnsBtn" data-i18n="openBrowserDns">
+            Tarayıcı Güvenli DNS Ayarını Aç
+          </button>
+        </div>
+
+        <!-- Custom Proxy Settings (shown when engine === 'custom') -->
+        <div class="card hidden" id="customProxyCard">
+          <div class="card-head">
+            <span class="card-label" data-i18n="customProxyTitle">Özel Sunucu Ayarları</span>
+          </div>
+          <div class="field">
+            <label class="field-label" for="quickPasteInput" data-i18n="quickPasteLabel">Hızlı Yapıştır (Opsiyonel)</label>
+            <input type="text" id="quickPasteInput" class="text-input" placeholder="socks5://ip:port veya https://host:443" spellcheck="false" />
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label class="field-label" for="proxySchemeSelect" data-i18n="proxyProtocol">Protokol</label>
+              <select id="proxySchemeSelect" class="select-input">
+                <option value="HTTPS">HTTPS</option>
+                <option value="SOCKS5">SOCKS5</option>
+                <option value="PROXY">HTTP</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field-label" for="proxyPortInput" data-i18n="proxyPort">Port</label>
+              <input type="number" id="proxyPortInput" class="text-input" value="443" min="1" max="65535" />
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="proxyHostInput" data-i18n="proxyHost">Sunucu (Host / IP)</label>
+            <input type="text" id="proxyHostInput" class="text-input" placeholder="proxy.example.com" spellcheck="false" />
+          </div>
+          <button class="btn-primary full-width" id="saveCustomProxyBtn" data-i18n="saveCustomProxy">
+            Kaydet &amp; Uygula
+          </button>
+        </div>
+
+        <!-- Privacy & Live Engine Stats -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-label" data-i18n="privacyTitle">Gizlilik &amp; İstatistik</span>
+          </div>
+
+          <label class="platform-row compact">
+            <div class="platform-info">
+              <div>
+                <div class="platform-name" data-i18n="webrtcLabel">WebRTC IP Sızıntı Koruması</div>
+                <div class="platform-desc" data-i18n="webrtcDesc">Gerçek yerel IP adresinin WebRTC üzerinden sızmasını engeller.</div>
+              </div>
+            </div>
+            <input type="checkbox" class="toggle" id="webrtcToggle" />
+          </label>
+
+          <div class="stats-grid hidden" id="engineStatsRow">
+            <div class="stat-box">
+              <div class="stat-val" id="statBypassed">0</div>
+              <div class="stat-key" data-i18n="statBypassed">Aşılan İstek</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val" id="statCache">0</div>
+              <div class="stat-key" data-i18n="statDnsCache">DoH Önbellek</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val" id="statLatency">--</div>
+              <div class="stat-key" data-i18n="statLatency">Motor Gecikme</div>
+            </div>
+          </div>
+
+          <div class="btn-row hidden" id="engineActionRow">
+            <button class="btn-secondary" id="testEngineBtn" data-i18n="testEngineBtn">Motoru Test Et</button>
+            <button class="btn-ghost" id="clearCacheBtn" data-i18n="clearCacheBtn">DNS Temizle</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
