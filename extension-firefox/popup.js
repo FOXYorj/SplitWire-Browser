@@ -275,7 +275,10 @@ function renderUI() {
   $('browserServerCard').classList.toggle('hidden', !isBrowserMode);
   if (isBrowserMode) {
     const badgeEl = $('serverCountryBadge');
+    const barsEl = $('signalBars');
     badgeEl.classList.remove('ping-medium', 'ping-slow');
+    barsEl.classList.toggle('live', Boolean(currentState.connected && activeSrv && !isScanning));
+
     if (isScanning) {
       badgeEl.textContent = '...';
       $('serverNameText').textContent = t('serverSearching');
@@ -303,7 +306,8 @@ function renderUI() {
   // Session Timer
   startOrStopTimer();
 
-  // Tunnel Mode Segmented Control
+  // Tunnel Mode Segmented Control (animated sliding thumb)
+  $('tunnelModeGroup').classList.toggle('is-full', currentState.tunnelMode === 'full');
   document.querySelectorAll('#tunnelModeGroup .seg-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.mode === currentState.tunnelMode);
   });
@@ -376,6 +380,13 @@ function renderUI() {
 }
 
 function switchTab(tabName) {
+  const order = ['connect', 'domains', 'settings'];
+  const idx = Math.max(0, order.indexOf(tabName));
+  const indicator = $('navIndicator');
+  if (indicator) {
+    indicator.style.transform = `translateX(${idx * 100}%)`;
+  }
+
   document.querySelectorAll('.nav-tab').forEach((btn) => {
     const isActive = btn.dataset.tab === tabName;
     btn.classList.toggle('active', isActive);
