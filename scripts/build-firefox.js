@@ -15,7 +15,7 @@ const DST = path.join(ROOT, 'extension-firefox');
 function copyDir(srcDir, dstDir) {
   fs.mkdirSync(dstDir, { recursive: true });
   for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    if (entry.name === 'manifest.json') continue;
+    if (entry.name === 'manifest.json' || entry.name === '_metadata') continue;
     const srcPath = path.join(srcDir, entry.name);
     const dstPath = path.join(dstDir, entry.name);
     if (entry.isDirectory()) {
