@@ -3,6 +3,7 @@
 let currentState = null;
 let currentEngine = { online: null, latencyMs: null, data: null };
 let platformDomains = {};
+let activeTabHost = null;
 let timerInterval = null;
 let toastTimeout = null;
 let isScanning = false;
@@ -115,6 +116,7 @@ function applyTranslations() {
 
   $('domainInput').placeholder = t('addDomainPlaceholder');
   $('exclusionInput').placeholder = t('exclusionPlaceholder');
+  $('customBlockInput').placeholder = t('customBlockPlaceholder');
   $('quickPasteInput').placeholder = t('quickPastePlaceholder');
 }
 
@@ -303,6 +305,44 @@ function renderUI() {
   // Inline Warning Banner (only when user picked local DPI engine & it isn't running)
   $('engineWarningBanner').classList.toggle('hidden', !engineOffline);
 
+  // Ad & Tracker Blocker UI (Home Card + Settings)
+  const adOn = Boolean(currentState.adblockEnabled);
+  const allowlist = currentState.adblockAllowlist || [];
+  const sitePaused = Boolean(
+    activeTabHost &&
+      allowlist.some((d) => activeTabHost === d || activeTabHost.endsWith('.' + d))
+  );
+
+  $('adblockHomeToggle').checked = adOn;
+  $('adblockSettingsToggle').checked = adOn;
+  $('trackerToggle').checked = Boolean(currentState.trackerBlockEnabled);
+  $('trackerToggle').disabled = !adOn;
+
+  const shieldIcon = $('adblockShieldIcon');
+  shieldIcon.classList.toggle('active', adOn && !sitePaused);
+  shieldIcon.classList.toggle('paused', adOn && sitePaused);
+
+  $('blockedCountPill').textContent = sitePaused
+    ? t('adblockPaused')
+    : t('adblockBlockedCount', { n: currentState.blockedCount || 0 });
+
+  const showSiteBar = Boolean(adOn && activeTabHost);
+  $('adblockSiteBar').classList.toggle('hidden', !showSiteBar);
+  if (showSiteBar) {
+    $('adblockSiteHost').textContent = activeTabHost;
+    $('toggleSiteAdblockBtn').textContent = sitePaused
+      ? t('adblockResumeSite')
+      : t('adblockPauseSite');
+  }
+
+  renderChipList('adblockAllowlist', allowlist, t('adblockNoAllowlist'), async (d) => {
+    const res = await sendMessage({ type: 'REMOVE_ADBLOCK_ALLOWLIST', domain: d });
+    if (res.state) {
+      currentState = res.state;
+      renderUI();
+    }
+  });
+
   // Session Timer
   startOrStopTimer();
 
@@ -328,6 +368,15 @@ function renderUI() {
     if (res.state) {
       currentState = res.state;
       renderUI();
+    }
+  });
+
+  renderChipList('customBlockList', currentState.customBlocklist, t('noCustomBlocks'), async (d) => {
+    const res = await sendMessage({ type: 'REMOVE_CUSTOM_BLOCK', domain: d });
+    if (res.state) {
+      currentState = res.state;
+      renderUI();
+      showToast(t('toastSiteUnblocked'));
     }
   });
 
@@ -360,7 +409,26 @@ function renderUI() {
   $('regionSelect').value = currentState.browserRegion || 'eu';
   $('presetSelect').value = currentState.preset || 'auto';
   $('dohSelect').value = currentState.dohProvider || 'cloudflare';
+  $('autoConnectToggle').checked = Boolean(currentState.autoConnectEnabled);
+  $('phishingToggle').checked = Boolean(currentState.phishingShieldEnabled);
+  $('communityFilterToggle').checked = Boolean(currentState.communityFilterEnabled);
   $('webrtcToggle').checked = Boolean(currentState.webrtcProtection);
+
+  // Community filter status meta
+  const commStats = currentState.communityStats || { ads: 0, phishing: 0 };
+  if (currentState.lastFilterUpdate) {
+    const dt = new Date(currentState.lastFilterUpdate);
+    const hh = String(dt.getHours()).padStart(2, '0');
+    const mm = String(dt.getMinutes()).padStart(2, '0');
+    $('communityMetaText').textContent = t('communityMetaInfo', {
+      ads: commStats.ads || 0,
+      phish: commStats.phishing || 0,
+      time: `${hh}:${mm}`,
+    });
+  } else {
+    $('communityMetaText').textContent = t('communityMetaNone');
+  }
+  $('communityBar').classList.toggle('hidden', !currentState.communityFilterEnabled);
 
   $('proxySchemeSelect').value = currentState.customProxy.scheme || 'HTTPS';
   $('proxyHostInput').value = currentState.customProxy.host || '';
@@ -612,6 +680,56 @@ function bindEvents() {
     }
   });
 
+  // Add Personal Block / Focus Domain Form
+  $('addCustomBlockForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = $('customBlockInput');
+    const val = input.value.trim();
+    if (!val) return;
+
+    const res = await sendMessage({ type: 'ADD_CUSTOM_BLOCK', domain: val });
+    if (res.ok && res.state) {
+      input.value = '';
+      currentState = res.state;
+      renderUI();
+      showToast(`${t('toastSiteBlocked')}: ${res.domain}`);
+    } else if (res.error === 'EXISTS') {
+      showToast(t('toastDomainExists'));
+    } else {
+      showToast(t('toastDomainInvalid'));
+    }
+  });
+
+  // 1-Click Block Current Tab & Immediately Show Animated Blocked Screen
+  $('blockCurrentTabBtn').addEventListener('click', async () => {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const activeTab = tabs && tabs[0];
+      if (!activeTab || !activeTab.url || !/^https?:\/\//i.test(activeTab.url)) {
+        showToast(t('toastTabUnavailable'));
+        return;
+      }
+      const host = new URL(activeTab.url).hostname.replace(/^www\./, '').toLowerCase();
+      const res = await sendMessage({ type: 'ADD_CUSTOM_BLOCK', domain: host });
+      if (res.ok && res.state) {
+        currentState = res.state;
+        renderUI();
+        showToast(`${t('toastSiteBlocked')}: ${res.domain}`);
+        // Redirect active tab immediately to the animated SplitWire blocked page
+        const blockedUrl = chrome.runtime.getURL(
+          `blocked.html?reason=custom&site=${encodeURIComponent(res.domain)}`
+        );
+        chrome.tabs.update(activeTab.id, { url: blockedUrl });
+      } else if (res.error === 'EXISTS') {
+        showToast(t('toastDomainExists'));
+      } else {
+        showToast(t('toastTabUnavailable'));
+      }
+    } catch (_) {
+      showToast(t('toastTabUnavailable'));
+    }
+  });
+
   // Add Exclusion Domain Form
   $('addExclusionForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -722,6 +840,97 @@ function bindEvents() {
     }
   });
 
+  // Auto-Connect, Phishing Shield & Community Filter Toggles
+  $('autoConnectToggle').addEventListener('change', async (e) => {
+    const res = await sendMessage({
+      type: 'UPDATE_STATE',
+      patch: { autoConnectEnabled: e.target.checked },
+    });
+    if (res.state) {
+      currentState = res.state;
+      renderUI();
+    }
+  });
+
+  $('phishingToggle').addEventListener('change', async (e) => {
+    const res = await sendMessage({
+      type: 'UPDATE_STATE',
+      patch: { phishingShieldEnabled: e.target.checked },
+    });
+    if (res.state) {
+      currentState = res.state;
+      renderUI();
+    }
+  });
+
+  $('communityFilterToggle').addEventListener('change', async (e) => {
+    const res = await sendMessage({
+      type: 'UPDATE_STATE',
+      patch: { communityFilterEnabled: e.target.checked },
+    });
+    if (res.state) {
+      currentState = res.state;
+      renderUI();
+    }
+  });
+
+  $('updateFiltersBtn').addEventListener('click', async () => {
+    const btn = $('updateFiltersBtn');
+    btn.disabled = true;
+    btn.textContent = t('updatingFiltersBtn');
+    const res = await sendMessage({ type: 'UPDATE_COMMUNITY_FILTERS' });
+    btn.disabled = false;
+    btn.textContent = t('updateFiltersBtn');
+    if (res.state) {
+      currentState = res.state;
+      renderUI();
+    }
+    if (res.ok) {
+      showToast(t('toastFiltersUpdated', { total: res.total || 0 }));
+    } else {
+      showToast(t('toastFiltersFailed'));
+    }
+  });
+
+  // Ad & Tracker Blocker Toggles
+  const handleAdblockToggle = async (checked) => {
+    const res = await sendMessage({
+      type: 'UPDATE_STATE',
+      patch: { adblockEnabled: checked },
+    });
+    if (res.state) {
+      currentState = res.state;
+      renderUI();
+      showToast(checked ? t('toastAdblockOn') : t('toastAdblockOff'));
+    }
+  };
+
+  $('adblockHomeToggle').addEventListener('change', (e) => handleAdblockToggle(e.target.checked));
+  $('adblockSettingsToggle').addEventListener('change', (e) =>
+    handleAdblockToggle(e.target.checked)
+  );
+
+  $('trackerToggle').addEventListener('change', async (e) => {
+    const res = await sendMessage({
+      type: 'UPDATE_STATE',
+      patch: { trackerBlockEnabled: e.target.checked },
+    });
+    if (res.state) {
+      currentState = res.state;
+      renderUI();
+    }
+  });
+
+  $('toggleSiteAdblockBtn').addEventListener('click', async () => {
+    if (!activeTabHost) return;
+    const res = await sendMessage({ type: 'TOGGLE_ADBLOCK_SITE', domain: activeTabHost });
+    if (res.ok && res.state) {
+      currentState = res.state;
+      renderUI();
+      showToast(res.paused ? t('toastSitePaused') : t('toastSiteResumed'));
+    }
+  });
+
   // WebRTC Protection Toggle
   $('webrtcToggle').addEventListener('change', async (e) => {
     const res = await sendMessage({
@@ -763,6 +972,14 @@ function bindEvents() {
 // Initialize popup
 (async function init() {
   bindEvents();
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs && tabs[0];
+    if (tab && tab.url && /^https?:\/\//i.test(tab.url)) {
+      activeTabHost = new URL(tab.url).hostname.replace(/^www\./, '').toLowerCase();
+    }
+  } catch (_) {}
+
   const res = await sendMessage({ type: 'GET_STATE' });
   currentState = res.state;
   currentEngine = res.engine || { online: null };

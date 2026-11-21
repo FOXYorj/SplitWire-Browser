@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Site Engellendi — SplitWire Browser</title>
+  <link rel="stylesheet" href="blocked.css" />
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-vignette" aria-hidden="true"></div>
+
+  <main class="stage">
+    <section class="panel" id="blockPanel">
+      <!-- Animated Shield Emblem -->
+      <div class="emblem-wrap" id="emblemWrap">
+        <span class="pulse-ring ring-1" aria-hidden="true"></span>
+        <span class="pulse-ring ring-2" aria-hidden="true"></span>
+
+        <svg class="dial-svg" viewBox="0 0 140 140" aria-hidden="true">
+          <circle class="dial-base" cx="70" cy="70" r="62" />
+          <circle class="dial-ticks" cx="70" cy="70" r="54" />
+          <circle class="dial-progress" cx="70" cy="70" r="62" />
+        </svg>
+
+        <div class="emblem-core">
+          <svg class="shield-svg" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path class="draw-shield" d="M12 2.5L4.5 5.8v5.9c0 4.9 3.2 9.1 7.5 10.3 4.3-1.2 7.5-5.4 7.5-10.3V5.8L12 2.5z" />
+            <line class="draw-slash" x1="8.5" y1="8.5" x2="15.5" y2="15.5" />
+            <line class="draw-slash-2" x1="15.5" y1="8.5" x2="8.5" y2="15.5" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- Reason Badge -->
+      <div class="badge-row reveal" style="--d: 180ms">
+        <span class="reason-badge" id="reasonBadge">Kişisel Engel Listesi</span>
+      </div>
+
+      <!-- Main Heading -->
+      <h1 class="headline reveal" style="--d: 260ms" id="headlineText">
+        Bu site SplitWire-Browser tarafından engellenmiştir
+      </h1>
+
+      <!-- Blocked Domain Telemetry Box -->
+      <div class="domain-box reveal" style="--d: 340ms">
+        <span class="domain-dot" aria-hidden="true"></span>
+        <code class="domain-name" id="blockedDomain">example.com</code>
+      </div>
+
+      <!-- Description -->
+      <p class="desc reveal" style="--d: 400ms" id="descText">
+        Bu alan adı kişisel engel / odak listenizde yer aldığı için erişime kapatıldı.
+      </p>
+
+      <!-- Action Buttons -->
+      <div class="actions reveal" style="--d: 470ms">
+        <button class="btn btn-primary" id="goBackBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          <span id="goBackLabel">Geri Dön</span>
+        </button>
+
+        <button class="btn btn-ghost" id="unblockBtn">
+          <span id="unblockLabel">Engeli Kaldır &amp; Devam Et</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Developer GitHub Footer Card -->
+    <footer class="dev-footer reveal" style="--d: 560ms">
+      <a class="dev-card" href="https://github.com/FOXYorj/SplitWire-Browser" target="_blank" rel="noopener noreferrer">
+        <img class="dev-avatar" src="icons/foxy-avatar.png" alt="FOXYorj" width="36" height="36" />
+        <div class="dev-meta">
+          <div class="dev-name-row">
+            <span class="dev-username">FOXYorj</span>
+            <span class="dev-handle">@FOXYorj</span>
+          </div>
+          <span class="dev-repo">github.com/FOXYorj/SplitWire-Browser</span>
+        </div>
+        <span class="gh-mark" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a10.97 10.97 0 0 1 5.77 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.58.24 2.75.12 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z" />
+          </svg>
+        </span>
+      </a>
+    </footer>
+  </main>
+
+  <script src="blocked.js"></script>
+</body>
+</html>

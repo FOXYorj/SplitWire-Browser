@@ -2,7 +2,7 @@
 
 /**
  * Generates the ready-to-load `extension-firefox/` package from `extension/`
- * with a native Firefox manifest (`browser.proxy.onRequest` + `browser_action`).
+ * with a native Firefox manifest (`browser.proxy.onRequest` + `webRequestBlocking` AdBlock/Phishing/Custom Block).
  */
 
 const fs = require('fs');
@@ -42,12 +42,20 @@ const firefoxManifest = {
   background: {
     scripts: ['background.js'],
   },
+  web_accessible_resources: [
+    'blocked.html',
+    'blocked.css',
+    'blocked.js',
+    'icons/foxy-avatar.png',
+  ],
   permissions: [
     'proxy',
     'storage',
     'privacy',
     'alarms',
-    'activeTab',
+    'tabs',
+    'webRequest',
+    'webRequestBlocking',
     '<all_urls>',
   ],
   browser_specific_settings: {

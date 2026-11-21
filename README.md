@@ -27,6 +27,9 @@
 - **Uçtan Uca HTTPS Güvenliği:** Dosyasız ücretsiz sunucu modunda yalnızca şifreli `https://` ve `wss://` bağlantıları tünellenir; düz metin `http://` trafiği üçüncü parti sunuculardan geçirilmez.
 - **Chrome & Firefox Tam Uyum:** Chromium tarayıcılarda yerleşik `PAC` motoru, Firefox tabanlı tarayıcılarda ise yerel `browser.proxy.onRequest` (`proxyDNS: true`) API'si kullanılır.
 - **Modern ve Sade Arayüz:** Koyu/Açık tema, Türkçe/İngilizce dil desteği, tek tıkla **"Bu Sekmeyi Ekle"** özelliği ve **WebRTC IP sızıntı koruması**.
+- **Yerleşik Reklam & İzleyici Engelleyici:** 213 yerleşik kural + **Otomatik Güncellenen Topluluk Filtresi** (AdAway, Peter Lowe, Discord-AntiScam — 24 saatte bir güncellenir), canlı engelleme sayacı ve site bazlı duraklatma.
+- **Akıllı Otomatik Bağlan (Auto-Connect):** Tünel listenizdeki bir site (Discord, Roblox vb.) açıldığında otomatik bağlanır, ilgili sekmeler kapanınca kendiliğinden bağlantıyı keser.
+- **Zararlı Site & Oltalama (Phishing) Kalkanı + Kişisel Engel / Odak Listesi:** Bilinen sahte banka / Discord / Steam dolandırıcılık sitelerini ve kendi eklediğiniz dikkat dağıtan siteleri özel animasyonlu SplitWire engelleme ekranıyla (`blocked.html`) durdurur.
 - **İsteğe Bağlı Yerel Sürücüsüz DPI Motoru:** Sıfır ekstra ping isteyenler için `WinDivert` gerektirmeyen, saf Node.js tabanlı TLS Record Splitting + DoH motoru (`engine/`) ve ByeDPI / Cloudflare WARP / Özel Proxy desteği.
 
 ---

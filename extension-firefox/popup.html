@@ -20,7 +20,7 @@
         <div class="brand-text">
           <div class="brand-row">
             <span class="brand-name">SplitWire</span>
-            <span class="version-tag">v1.2</span>
+            <span class="version-tag">v1.4</span>
           </div>
           <span class="brand-sub" data-i18n="appSubtitle">Bölünmüş Tünel · Dosyasız</span>
         </div>
@@ -153,8 +153,34 @@
           </div>
         </div>
 
+        <!-- Compact Ad & Tracker Blocker Card -->
+        <div class="card shield-card anim-item" style="--i: 2" id="adblockHomeCard">
+          <div class="shield-row">
+            <div class="shield-info">
+              <span class="shield-icon" id="adblockShieldIcon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <path d="M9 12l2 2 4-4"/>
+                </svg>
+              </span>
+              <div class="shield-meta">
+                <div class="shield-title-row">
+                  <span class="platform-name" data-i18n="adblockTitle">Reklam Engelleyici</span>
+                  <span class="count-pill" id="blockedCountPill">0 engellendi</span>
+                </div>
+                <div class="platform-desc" id="adblockSiteMeta" data-i18n="adblockDesc">Banner, pop-up ve video reklam ağlarını ağ katmanında engeller.</div>
+              </div>
+            </div>
+            <input type="checkbox" class="toggle" id="adblockHomeToggle" checked />
+          </div>
+          <div class="shield-site-bar hidden" id="adblockSiteBar">
+            <span class="site-host" id="adblockSiteHost">example.com</span>
+            <button class="mini-btn" id="toggleSiteAdblockBtn" data-i18n="adblockPauseSite">Bu sitede duraklat</button>
+          </div>
+        </div>
+
         <!-- Tunnel Mode Selector with Sliding Thumb -->
-        <div class="card anim-item" style="--i: 2">
+        <div class="card anim-item" style="--i: 3">
           <div class="card-head">
             <span class="card-label" data-i18n="tunnelModeLabel">Tünel Modu</span>
           </div>
@@ -256,6 +282,34 @@
         </div>
 
         <div class="card anim-item" style="--i: 2">
+          <div class="card-head">
+            <span class="card-label" data-i18n="customBlockTitle">Kişisel Engel / Odak Listesi</span>
+            <button class="chip-action-btn danger-action" id="blockCurrentTabBtn">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                <circle cx="12" cy="12" r="9"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              <span data-i18n="blockCurrentTab">Bu Sekmeyi Engelle</span>
+            </button>
+          </div>
+          <p class="card-hint" data-i18n="customBlockHint">
+            Eklediğiniz siteler özel SplitWire engelleme ekranıyla kapatılır.
+          </p>
+          <form class="input-row" id="addCustomBlockForm">
+            <input
+              type="text"
+              id="customBlockInput"
+              class="text-input"
+              placeholder="örnek: dikkatdagitan.com"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="submit" class="btn-secondary" data-i18n="addBtn">Ekle</button>
+          </form>
+          <div class="chip-list" id="customBlockList"></div>
+        </div>
+
+        <div class="card anim-item" style="--i: 3">
           <div class="card-head">
             <span class="card-label" data-i18n="exclusionsTitle">Dışlama Listesi (Her Zaman Direkt)</span>
           </div>
@@ -394,12 +448,72 @@
           <label class="platform-row compact">
             <div class="platform-info">
               <div>
+                <div class="platform-name" data-i18n="autoConnectLabel">Akıllı Otomatik Bağlan</div>
+                <div class="platform-desc" data-i18n="autoConnectDesc">Tünel listendeki bir site açıldığında otomatik bağlanır, kapanınca keser.</div>
+              </div>
+            </div>
+            <input type="checkbox" class="toggle" id="autoConnectToggle" />
+          </label>
+
+          <label class="platform-row compact">
+            <div class="platform-info">
+              <div>
+                <div class="platform-name" data-i18n="phishingLabel">Zararlı Site &amp; Oltalama Kalkanı</div>
+                <div class="platform-desc" data-i18n="phishingDesc">Sahte banka, Discord/Steam dolandırıcılığı ve zararlı siteleri engeller.</div>
+              </div>
+            </div>
+            <input type="checkbox" class="toggle" id="phishingToggle" checked />
+          </label>
+
+          <label class="platform-row compact">
+            <div class="platform-info">
+              <div>
+                <div class="platform-name" data-i18n="adblockTitle">Reklam Engelleyici</div>
+                <div class="platform-desc" data-i18n="adblockDesc">Banner, pop-up ve video reklam ağlarını ağ katmanında engeller.</div>
+              </div>
+            </div>
+            <input type="checkbox" class="toggle" id="adblockSettingsToggle" checked />
+          </label>
+
+          <label class="platform-row compact">
+            <div class="platform-info">
+              <div>
+                <div class="platform-name" data-i18n="trackerLabel">İzleyici &amp; Telemetri Koruması</div>
+                <div class="platform-desc" data-i18n="trackerDesc">Analitik, piksel ve takip komut dosyalarını engeller.</div>
+              </div>
+            </div>
+            <input type="checkbox" class="toggle" id="trackerToggle" checked />
+          </label>
+
+          <label class="platform-row compact">
+            <div class="platform-info">
+              <div>
+                <div class="platform-name" data-i18n="communityFilterLabel">Otomatik Topluluk Filtresi</div>
+                <div class="platform-desc" data-i18n="communityFilterDesc">24 saatte bir açık kaynak reklam ve oltalama kurallarını günceller.</div>
+              </div>
+            </div>
+            <input type="checkbox" class="toggle" id="communityFilterToggle" checked />
+          </label>
+
+          <div class="community-bar" id="communityBar">
+            <span class="community-meta" id="communityMetaText">Henüz güncellenmedi</span>
+            <button class="mini-btn" id="updateFiltersBtn" data-i18n="updateFiltersBtn">Şimdi Güncelle</button>
+          </div>
+
+          <label class="platform-row compact">
+            <div class="platform-info">
+              <div>
                 <div class="platform-name" data-i18n="webrtcLabel">WebRTC IP Sızıntı Koruması</div>
                 <div class="platform-desc" data-i18n="webrtcDesc">Gerçek yerel IP adresinin WebRTC üzerinden sızmasını engeller.</div>
               </div>
             </div>
             <input type="checkbox" class="toggle" id="webrtcToggle" />
           </label>
+
+          <div class="allowlist-block" id="adblockAllowlistBlock">
+            <div class="sub-label" data-i18n="adblockAllowlistTitle">Reklam İzni Verilen Siteler</div>
+            <div class="chip-list" id="adblockAllowlist"></div>
+          </div>
 
           <div class="stats-grid hidden" id="engineStatsRow">
             <div class="stat-box">

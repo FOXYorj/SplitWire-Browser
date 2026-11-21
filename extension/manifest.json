@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SplitWire Browser",
-  "version": "1.2.0",
-  "description": "SplitWire-Turkey tarayıcı sürümü — dosya çalıştırmadan tek tıkla bölünmüş tünelleme (Split Tunnel) ve düşük gecikmeli Avrupa sunucu seçimi.",
+  "version": "1.4.0",
+  "description": "SplitWire-Turkey tarayıcı sürümü — dosyasız tek tıkla bölünmüş tünelleme, otomatik bağlanma, reklam/oltalama kalkanı ve kişisel odak engelleyici.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -27,22 +27,37 @@
     "storage",
     "privacy",
     "alarms",
-    "activeTab"
+    "tabs",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ads_ruleset",
+        "enabled": true,
+        "path": "rules/ads.json"
+      },
+      {
+        "id": "trackers_ruleset",
+        "enabled": true,
+        "path": "rules/trackers.json"
+      }
+    ]
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked.html",
+        "blocked.css",
+        "blocked.js",
+        "icons/foxy-avatar.png"
+      ],
+      "matches": ["<all_urls>"]
+    }
   ],
   "host_permissions": [
-    "http://127.0.0.1/*",
-    "https://api.proxyscrape.com/*",
-    "https://cdn.jsdelivr.net/*",
-    "https://proxylist.geonode.com/*",
-    "https://cp.cloudflare.com/*",
-    "https://1.1.1.1/*",
-    "https://1.0.0.1/*",
-    "https://one.one.one.one/*",
-    "https://cloudflare-dns.com/*",
-    "https://connectivitycheck.gstatic.com/*",
-    "https://www.gstatic.com/*",
-    "https://clients3.google.com/*",
-    "https://www.google.com/*",
-    "https://detectportal.firefox.com/*"
+    "http://*/*",
+    "https://*/*"
   ]
 }

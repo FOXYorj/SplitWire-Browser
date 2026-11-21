@@ -80,6 +80,18 @@ const DEFAULT_STATE = {
   preset: 'auto',
   dohProvider: 'cloudflare',
   webrtcProtection: true,
+  adblockEnabled: true,
+  trackerBlockEnabled: true,
+  adblockAllowlist: [],
+  blockedCount: 0,
+  autoConnectEnabled: false,
+  autoConnected: false,
+  phishingShieldEnabled: true,
+  phishingAllowlist: [],
+  customBlocklist: [],
+  communityFilterEnabled: true,
+  lastFilterUpdate: null,
+  communityStats: { ads: 0, phishing: 0 },
   theme: 'dark',
   lang: 'tr',
   platforms: {
@@ -101,10 +113,13 @@ const DEFAULT_STATE = {
 };
 
 const HEALTH_ALARM = 'splitwire-health-check';
+const COMMUNITY_ALARM = 'splitwire-community-filter';
 const IS_FIREFOX =
   typeof browser !== 'undefined' && Boolean(browser.proxy && browser.proxy.onRequest);
 
 let isProbing = false;
+let isAutoConnecting = false;
+let autoDisconnectTimer = null;
 let firefoxCachedState = null;
 let firefoxProbeMap = null; // Map<host, ProxyInfo> active only during parallel server probes
 let firefoxBypassForFetch = false;
@@ -243,6 +258,14 @@ async function getState() {
     browserServers: Array.isArray(saved.browserServers) ? saved.browserServers : [],
     customDomains: Array.isArray(saved.customDomains) ? saved.customDomains : [],
     exclusions: Array.isArray(saved.exclusions) ? saved.exclusions : [...DEFAULT_STATE.exclusions],
+    adblockAllowlist: Array.isArray(saved.adblockAllowlist) ? saved.adblockAllowlist : [],
+    phishingAllowlist: Array.isArray(saved.phishingAllowlist) ? saved.phishingAllowlist : [],
+    customBlocklist: Array.isArray(saved.customBlocklist) ? saved.customBlocklist : [],
+    communityStats: {
+      ...DEFAULT_STATE.communityStats,
+      ...(saved.communityStats || {}),
+    },
+    blockedCount: typeof saved.blockedCount === 'number' ? saved.blockedCount : 0,
   };
 }
 
@@ -792,19 +815,680 @@ function sanitizeDomain(input) {
   return d;
 }
 
+// ==================== Cross-Browser Ad, Phishing, Focus & Community Shield ====================
+const ALLOWLIST_RULE_ID = 50001;
+const CUSTOM_BLOCK_BASE_ID = 60000; // 60000..60999
+const PHISHING_BASE_ID = 65000; // 65000..65499
+const COMMUNITY_AD_BASE_ID = 70000; // 70000..70599
+
+const SUBRESOURCE_TYPES = [
+  'script',
+  'image',
+  'sub_frame',
+  'xmlhttprequest',
+  'ping',
+  'media',
+  'other',
+  'stylesheet',
+  'font',
+  'websocket',
+];
+
+let pendingBlockedIncrement = 0;
+let blockedFlushTimer = null;
+let builtinPhishingCache = null;
+
+function recordBlockedHit() {
+  pendingBlockedIncrement++;
+  if (firefoxCachedState) {
+    firefoxCachedState.blockedCount = (firefoxCachedState.blockedCount || 0) + 1;
+  }
+  if (!blockedFlushTimer) {
+    blockedFlushTimer = setTimeout(async () => {
+      const delta = pendingBlockedIncrement;
+      pendingBlockedIncrement = 0;
+      blockedFlushTimer = null;
+      if (delta <= 0) return;
+      const st = await getState();
+      st.blockedCount = (st.blockedCount || 0) + delta;
+      await saveState(st);
+    }, 1500);
+  }
+}
+
+async function getBuiltinPhishingDomains() {
+  if (builtinPhishingCache) return builtinPhishingCache;
+  try {
+    const url = (typeof browser !== 'undefined' ? browser.runtime : chrome.runtime).getURL(
+      'rules/phishing.json'
+    );
+    const res = await fetch(url);
+    const arr = await res.json();
+    builtinPhishingCache = Array.isArray(arr)
+      ? arr.map((d) => String(d).toLowerCase().trim()).filter(Boolean)
+      : [];
+  } catch (_) {
+    builtinPhishingCache = [];
+  }
+  return builtinPhishingCache;
+}
+
+async function getCommunityStorage() {
+  const res = await chrome.storage.local.get('splitwireCommunity');
+  const data = res.splitwireCommunity || {};
+  return {
+    ads: Array.isArray(data.ads) ? data.ads : [],
+    phishing: Array.isArray(data.phishing) ? data.phishing : [],
+  };
+}
+
+function parseHostsDomains(text, maxCount = 500) {
+  const out = [];
+  const seen = new Set();
+  for (const rawLine of String(text || '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || line.startsWith('!')) continue;
+    const parts = line.split(/\s+/);
+    let candidate = parts.length >= 2 && /^(0\.0\.0\.0|127\.0\.0\.1)$/.test(parts[0]) ? parts[1] : parts[0];
+    candidate = candidate.toLowerCase().replace(/^\.+|\.+$/g, '');
+    if (
+      !candidate ||
+      candidate === 'localhost' ||
+      candidate.endsWith('.local') ||
+      !candidate.includes('.') ||
+      candidate.length > 120 ||
+      !/^[a-z0-9.-]+$/.test(candidate)
+    ) {
+      continue;
+    }
+    if (!seen.has(candidate)) {
+      seen.add(candidate);
+      out.push(candidate);
+      if (out.length >= maxCount) break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Fetches fresh open-source community ad & phishing blocklists
+ * (AdAway + Peter Lowe + Discord-AntiScam) and applies them live.
+ */
+async function refreshCommunityFilters() {
+  const state = await getState();
+
+  const [adawayRes, plRes, scamRes] = await Promise.allSettled([
+    fetch('https://cdn.jsdelivr.net/gh/AdAway/adaway.github.io@master/hosts.txt', {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
+    }).then((r) => (r.ok ? r.text() : '')),
+    fetch(
+      'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=nohtml&showintro=0&mimetype=plaintext',
+      {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(6000),
+      }
+    ).then((r) => (r.ok ? r.text() : '')),
+    fetch('https://raw.githubusercontent.com/Discord-AntiScam/scam-links/main/list.json', {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
+    }).then((r) => (r.ok ? r.json() : [])),
+  ]);
+
+  // Deduplicate against static ads.json so community rules add strictly NEW coverage
+  const staticAdSet = new Set();
+  try {
+    const url = (typeof browser !== 'undefined' ? browser.runtime : chrome.runtime).getURL(
+      'rules/ads.json'
+    );
+    const staticRules = await (await fetch(url)).json();
+    for (const r of staticRules) {
+      const f = r?.condition?.urlFilter;
+      if (f && f.startsWith('||')) staticAdSet.add(f.slice(2).replace(/\^$/, '').toLowerCase());
+    }
+  } catch (_) {}
+
+  const adSet = new Set();
+  const adSources = [
+    adawayRes.status === 'fulfilled' ? adawayRes.value : '',
+    plRes.status === 'fulfilled' ? plRes.value : '',
+  ];
+  for (const srcText of adSources) {
+    for (const d of parseHostsDomains(srcText, 600)) {
+      if (!staticAdSet.has(d)) adSet.add(d);
+      if (adSet.size >= 500) break;
+    }
+    if (adSet.size >= 500) break;
+  }
+
+  const builtinPhish = new Set(await getBuiltinPhishingDomains());
+  const phishSet = new Set();
+  if (scamRes.status === 'fulfilled' && Array.isArray(scamRes.value)) {
+    for (const item of scamRes.value) {
+      const d = sanitizeDomain(String(item || ''));
+      if (d && !builtinPhish.has(d)) {
+        phishSet.add(d);
+        if (phishSet.size >= 350) break;
+      }
+    }
+  }
+
+  const ads = Array.from(adSet);
+  const phishing = Array.from(phishSet);
+
+  if (ads.length === 0 && phishing.length === 0) {
+    return { ok: false, error: 'FETCH_FAILED', state };
+  }
+
+  await chrome.storage.local.set({ splitwireCommunity: { ads, phishing } });
+  state.lastFilterUpdate = Date.now();
+  state.communityStats = { ads: ads.length, phishing: phishing.length };
+  await saveState(state);
+  await applyAdblockState(state);
+
+  return {
+    ok: true,
+    total: ads.length + phishing.length,
+    ads: ads.length,
+    phishing: phishing.length,
+    state,
+  };
+}
+
+// Firefox MV2: Native webRequestBlocking matchers (Ads, Trackers, Community, Phishing, Custom Focus Block)
+const ffAdMatcher = { domains: new Set(), paths: [] };
+const ffTrackerMatcher = { domains: new Set(), paths: [] };
+const ffCommunityAdSet = new Set();
+const ffPhishingSet = new Set();
+const ffCustomBlockSet = new Set();
+
+function loadRulesIntoMatcher(rulesArray, target) {
+  for (const rule of rulesArray) {
+    const f = rule && rule.condition && rule.condition.urlFilter;
+    if (!f || !f.startsWith('||')) continue;
+    const raw = f.slice(2).replace(/\^$/, '').toLowerCase();
+    if (raw.includes('/')) target.paths.push(raw);
+    else target.domains.add(raw);
+  }
+}
+
+function hostMatchesSet(host, domainSet) {
+  if (domainSet.has(host)) return true;
+  let dot = host.indexOf('.');
+  while (dot !== -1) {
+    const parent = host.slice(dot + 1);
+    if (domainSet.has(parent)) return true;
+    dot = host.indexOf('.', dot + 1);
+  }
+  return false;
+}
+
+function findMatchedDomainInSet(host, domainSet) {
+  if (domainSet.has(host)) return host;
+  let dot = host.indexOf('.');
+  while (dot !== -1) {
+    const parent = host.slice(dot + 1);
+    if (domainSet.has(parent)) return parent;
+    dot = host.indexOf('.', dot + 1);
+  }
+  return null;
+}
+
+/**
+ * Unified Protection Rule Applicator (Chrome MV3 DNR + Firefox MV2 in-memory sets).
+ * Manages:
+ * - Static Ads & Trackers rulesets
+ * - AdBlock per-site allowlist (50001)
+ * - Personal Block / Focus List main_frame redirects to /blocked.html (60000+)
+ * - Phishing & Malware Shield main_frame redirects to /blocked.html (65000+)
+ * - Auto-Updating Community Ad Filter delta rules (70000+)
+ */
+async function applyAdblockState(state) {
+  firefoxCachedState = state;
+
+  const builtinPhishing = await getBuiltinPhishingDomains();
+  const community = await getCommunityStorage();
+  const phishingAllow = new Set(
+    (state.phishingAllowlist || []).map((d) => d.toLowerCase().trim()).filter(Boolean)
+  );
+  const customBlocks = (state.customBlocklist || [])
+    .map((d) => d.toLowerCase().trim().replace(/^www\./, ''))
+    .filter(Boolean);
+
+  // Combine built-in + community phishing domains (excluding any user-allowed overrides)
+  const activePhishing = [];
+  if (state.phishingShieldEnabled) {
+    const seenP = new Set();
+    const pool = state.communityFilterEnabled
+      ? [...builtinPhishing, ...community.phishing]
+      : [...builtinPhishing];
+    for (const d of pool) {
+      if (!phishingAllow.has(d) && !seenP.has(d)) {
+        seenP.add(d);
+        activePhishing.push(d);
+        if (activePhishing.length >= 420) break;
+      }
+    }
+  }
+
+  const activeCommunityAds =
+    state.adblockEnabled && state.communityFilterEnabled ? community.ads.slice(0, 500) : [];
+
+  // Keep Firefox in-memory sets synced
+  ffCustomBlockSet.clear();
+  customBlocks.forEach((d) => ffCustomBlockSet.add(d));
+  ffPhishingSet.clear();
+  activePhishing.forEach((d) => ffPhishingSet.add(d));
+  ffCommunityAdSet.clear();
+  activeCommunityAds.forEach((d) => ffCommunityAdSet.add(d));
+
+  // Schedule or clear 24-hour community filter alarm
+  if (state.communityFilterEnabled) {
+    chrome.alarms.create(COMMUNITY_ALARM, { periodInMinutes: 1440 });
+  } else {
+    chrome.alarms.clear(COMMUNITY_ALARM);
+  }
+
+  // Chrome MV3 declarativeNetRequest sync
+  if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
+    const enableRulesetIds = [];
+    const disableRulesetIds = [];
+
+    if (state.adblockEnabled) enableRulesetIds.push('ads_ruleset');
+    else disableRulesetIds.push('ads_ruleset');
+
+    if (state.adblockEnabled && state.trackerBlockEnabled) enableRulesetIds.push('trackers_ruleset');
+    else disableRulesetIds.push('trackers_ruleset');
+
+    try {
+      await chrome.declarativeNetRequest.updateEnabledRulesets({
+        enableRulesetIds,
+        disableRulesetIds,
+      });
+    } catch (_) {}
+
+    try {
+      const existing = await chrome.declarativeNetRequest.getDynamicRules();
+      const removeRuleIds = existing.map((r) => r.id);
+      const addRules = [];
+
+      // 1. AdBlock per-site allowlist (only affects ad/tracker block rules, priority 100)
+      const allowlist = (state.adblockAllowlist || [])
+        .map((d) => d.toLowerCase().trim())
+        .filter(Boolean);
+      if (allowlist.length > 0) {
+        addRules.push({
+          id: ALLOWLIST_RULE_ID,
+          priority: 100,
+          action: { type: 'allow' },
+          condition: {
+            initiatorDomains: allowlist,
+            resourceTypes: SUBRESOURCE_TYPES,
+          },
+        });
+      }
+
+      // 2. Personal Block / Focus List (main_frame -> animated blocked.html)
+      customBlocks.slice(0, 500).forEach((domain, idx) => {
+        addRules.push({
+          id: CUSTOM_BLOCK_BASE_ID + idx,
+          priority: 90,
+          action: {
+            type: 'redirect',
+            redirect: {
+              extensionPath: `/blocked.html?reason=custom&site=${encodeURIComponent(domain)}`,
+            },
+          },
+          condition: {
+            urlFilter: `||${domain}^`,
+            resourceTypes: ['main_frame'],
+          },
+        });
+      });
+
+      // 3. Phishing & Malware Shield (main_frame -> animated blocked.html)
+      activePhishing.forEach((domain, idx) => {
+        addRules.push({
+          id: PHISHING_BASE_ID + idx,
+          priority: 85,
+          action: {
+            type: 'redirect',
+            redirect: {
+              extensionPath: `/blocked.html?reason=phishing&site=${encodeURIComponent(domain)}`,
+            },
+          },
+          condition: {
+            urlFilter: `||${domain}^`,
+            resourceTypes: ['main_frame'],
+          },
+        });
+      });
+
+      // 4. Community Ad Filter delta (subresources only)
+      activeCommunityAds.forEach((domain, idx) => {
+        addRules.push({
+          id: COMMUNITY_AD_BASE_ID + idx,
+          priority: 1,
+          action: { type: 'block' },
+          condition: {
+            urlFilter: `||${domain}^`,
+            resourceTypes: SUBRESOURCE_TYPES,
+          },
+        });
+      });
+
+      await chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds,
+        addRules,
+      });
+    } catch (err) {
+      console.warn('[SplitWire] updateDynamicRules warning:', err);
+    }
+  }
+}
+
+// Chrome unpacked live blocked counter
+if (
+  typeof chrome !== 'undefined' &&
+  chrome.declarativeNetRequest &&
+  chrome.declarativeNetRequest.onRuleMatchedDebug
+) {
+  chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
+    if (info && info.rule && info.rule.ruleId !== ALLOWLIST_RULE_ID) {
+      recordBlockedHit();
+    }
+  });
+}
+
+function checkFirefoxMainFrameBlock(urlStr, state) {
+  if (!state) return null;
+  let parsed;
+  try {
+    parsed = new URL(urlStr);
+  } catch (_) {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  const host = parsed.hostname.toLowerCase();
+
+  // 1. Personal Block / Focus List
+  const matchedCustom = findMatchedDomainInSet(host, ffCustomBlockSet);
+  if (matchedCustom) {
+    return { reason: 'custom', site: matchedCustom };
+  }
+
+  // 2. Phishing & Malware Shield
+  if (state.phishingShieldEnabled) {
+    const matchedPhish = findMatchedDomainInSet(host, ffPhishingSet);
+    if (matchedPhish) {
+      return { reason: 'phishing', site: matchedPhish };
+    }
+  }
+  return null;
+}
+
+function shouldBlockFirefoxRequest(urlStr, initiatorUrl, reqType, state) {
+  if (!state || !state.adblockEnabled || reqType === 'main_frame') return false;
+
+  if (initiatorUrl && state.adblockAllowlist && state.adblockAllowlist.length > 0) {
+    try {
+      const initHost = new URL(initiatorUrl).hostname.toLowerCase();
+      if (matchesAnyHostJs(initHost, state.adblockAllowlist)) return false;
+    } catch (_) {}
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(urlStr);
+  } catch (_) {
+    return false;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const hostAndPath = `${host}${parsed.pathname.toLowerCase()}`;
+
+  if (hostMatchesSet(host, ffAdMatcher.domains)) return true;
+  if (state.communityFilterEnabled && hostMatchesSet(host, ffCommunityAdSet)) return true;
+  for (let i = 0; i < ffAdMatcher.paths.length; i++) {
+    if (hostAndPath.includes(ffAdMatcher.paths[i])) return true;
+  }
+
+  if (state.trackerBlockEnabled) {
+    if (hostMatchesSet(host, ffTrackerMatcher.domains)) return true;
+    for (let i = 0; i < ffTrackerMatcher.paths.length; i++) {
+      if (hostAndPath.includes(ffTrackerMatcher.paths[i])) return true;
+    }
+  }
+
+  return false;
+}
+
+if (
+  IS_FIREFOX &&
+  typeof browser !== 'undefined' &&
+  browser.webRequest &&
+  browser.webRequest.onBeforeRequest
+) {
+  Promise.all([
+    fetch(browser.runtime.getURL('rules/ads.json')).then((r) => r.json()).catch(() => []),
+    fetch(browser.runtime.getURL('rules/trackers.json')).then((r) => r.json()).catch(() => []),
+  ]).then(([ads, trackers]) => {
+    loadRulesIntoMatcher(ads, ffAdMatcher);
+    loadRulesIntoMatcher(trackers, ffTrackerMatcher);
+  });
+
+  browser.webRequest.onBeforeRequest.addListener(
+    (details) => {
+      if (!firefoxCachedState) return {};
+      if (details.type === 'main_frame') {
+        const hit = checkFirefoxMainFrameBlock(details.url, firefoxCachedState);
+        if (hit) {
+          recordBlockedHit();
+          return {
+            redirectUrl: browser.runtime.getURL(
+              `blocked.html?reason=${hit.reason}&site=${encodeURIComponent(hit.site)}`
+            ),
+          };
+        }
+        return {};
+      }
+      const initiator = details.documentUrl || details.originUrl || '';
+      if (shouldBlockFirefoxRequest(details.url, initiator, details.type, firefoxCachedState)) {
+        recordBlockedHit();
+        return { cancel: true };
+      }
+      return {};
+    },
+    { urls: ['<all_urls>'] },
+    ['blocking']
+  );
+}
+
+// ==================== Smart Auto-Connect (Tab-Aware Split Tunnel) ====================
+function urlMatchesSplitTunnel(urlStr, state) {
+  if (!urlStr || !/^https?:\/\//i.test(urlStr)) return false;
+  try {
+    const host = new URL(urlStr).hostname.toLowerCase();
+    const domains = getActiveSplitDomains(state);
+    return matchesAnyHostJs(host, domains);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function evaluateAutoConnect() {
+  if (isAutoConnecting || isProbing) return;
+  const state = await getState();
+  if (!state.autoConnectEnabled) return;
+
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({});
+  } catch (_) {
+    return;
+  }
+
+  const hasMatchingTab = tabs.some((tab) => urlMatchesSplitTunnel(tab.url, state));
+
+  if (hasMatchingTab) {
+    clearTimeout(autoDisconnectTimer);
+    autoDisconnectTimer = null;
+
+    if (!state.connected) {
+      if (state.engineMode === 'custom' && !(state.customProxy.host || '').trim()) return;
+      isAutoConnecting = true;
+      try {
+        if (state.engineMode === 'browser') {
+          const active = getActiveBrowserServer(state);
+          const isStale = !active || Date.now() - (active.verifiedAt || 0) > 20 * 60_000;
+          if (isStale) {
+            const disc = await discoverWorkingServers(state);
+            if (!disc.ok) return;
+          }
+        }
+        const fresh = await getState();
+        fresh.connected = true;
+        fresh.autoConnected = true;
+        fresh.connectedAt = Date.now();
+        await saveState(fresh);
+        await applyProxyState(fresh);
+      } finally {
+        isAutoConnecting = false;
+      }
+    }
+  } else if (state.connected && state.autoConnected) {
+    // Wait 4 seconds before disconnecting so refreshing/switching tabs doesn't flap
+    if (!autoDisconnectTimer) {
+      autoDisconnectTimer = setTimeout(async () => {
+        autoDisconnectTimer = null;
+        const latest = await getState();
+        if (!latest.autoConnectEnabled || !latest.connected || !latest.autoConnected) return;
+        const curTabs = await chrome.tabs.query({}).catch(() => []);
+        if (!curTabs.some((t) => urlMatchesSplitTunnel(t.url, latest))) {
+          latest.connected = false;
+          latest.autoConnected = false;
+          latest.connectedAt = null;
+          await saveState(latest);
+          await applyProxyState(latest);
+        }
+      }, 4000);
+    }
+  }
+}
+
+function findMainFrameBlockInState(urlStr, state, extraPhishingList = []) {
+  if (!state || !urlStr || !/^https?:\/\//i.test(urlStr)) return null;
+  let host;
+  try {
+    host = new URL(urlStr).hostname.toLowerCase();
+  } catch (_) {
+    return null;
+  }
+
+  // 1. Personal Block / Focus List
+  const customList = (state.customBlocklist || [])
+    .map((d) => d.toLowerCase().trim().replace(/^www\./, ''))
+    .filter(Boolean);
+  for (let i = 0; i < customList.length; i++) {
+    const d = customList[i];
+    if (host === d || host.endsWith('.' + d)) {
+      return { reason: 'custom', site: d };
+    }
+  }
+
+  // 2. Phishing & Malware Shield
+  if (state.phishingShieldEnabled) {
+    const allowSet = new Set(
+      (state.phishingAllowlist || []).map((d) => d.toLowerCase().trim().replace(/^www\./, ''))
+    );
+    const matched = findMatchedDomainInSet(host, ffPhishingSet);
+    if (matched && !allowSet.has(matched)) {
+      return { reason: 'phishing', site: matched };
+    }
+    for (let i = 0; i < extraPhishingList.length; i++) {
+      const d = extraPhishingList[i];
+      if (!allowSet.has(d) && (host === d || host.endsWith('.' + d))) {
+        return { reason: 'phishing', site: d };
+      }
+    }
+  }
+  return null;
+}
+
+async function enforceTabBlock(tabId, urlStr) {
+  if (!tabId || !urlStr || !/^https?:\/\//i.test(urlStr)) return;
+  const state = await getState();
+  const builtinPhishing = state.phishingShieldEnabled ? await getBuiltinPhishingDomains() : [];
+  const hit = findMainFrameBlockInState(urlStr, state, builtinPhishing);
+  if (!hit) return;
+
+  const blockedUrl = chrome.runtime.getURL(
+    `blocked.html?reason=${hit.reason}&site=${encodeURIComponent(hit.site)}`
+  );
+  recordBlockedHit();
+  try {
+    await chrome.tabs.update(tabId, { url: blockedUrl });
+  } catch (_) {}
+}
+
+if (typeof chrome !== 'undefined' && chrome.tabs) {
+  if (chrome.tabs.onCreated) {
+    chrome.tabs.onCreated.addListener((tab) => {
+      const targetUrl = tab && (tab.pendingUrl || tab.url);
+      if (tab && tab.id && targetUrl && /^https?:\/\//i.test(targetUrl)) {
+        enforceTabBlock(tab.id, targetUrl);
+      }
+    });
+  }
+  if (chrome.tabs.onUpdated) {
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      const targetUrl = (changeInfo && changeInfo.url) || (tab && tab.url);
+      if (changeInfo && (changeInfo.url || changeInfo.status === 'loading') && targetUrl) {
+        enforceTabBlock(tabId, targetUrl);
+      }
+      if (changeInfo && changeInfo.url) {
+        evaluateAutoConnect();
+      }
+    });
+  }
+  if (chrome.tabs.onRemoved) {
+    chrome.tabs.onRemoved.addListener(() => {
+      evaluateAutoConnect();
+    });
+  }
+}
+
 // Lifecycle listeners
 chrome.runtime.onInstalled.addListener(async () => {
   const state = await getState();
   await saveState(state);
   await applyProxyState(state);
+  await applyAdblockState(state);
+  if (state.communityFilterEnabled && !state.lastFilterUpdate) {
+    refreshCommunityFilters().catch(() => {});
+  }
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   const state = await getState();
   await applyProxyState(state);
+  await applyAdblockState(state);
+  if (
+    state.communityFilterEnabled &&
+    (!state.lastFilterUpdate || Date.now() - state.lastFilterUpdate > 24 * 3600_000)
+  ) {
+    refreshCommunityFilters().catch(() => {});
+  }
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === COMMUNITY_ALARM) {
+    const st = await getState();
+    if (st.communityFilterEnabled) {
+      refreshCommunityFilters().catch(() => {});
+    }
+    return;
+  }
   if (alarm.name !== HEALTH_ALARM) return;
   const state = await getState();
   if (!state.connected || state.engineMode !== 'splitwire') {
@@ -815,10 +1499,20 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   await updateBadgeAndIcon(state, health.online);
 });
 
+if (IS_FIREFOX) {
+  getState().then((st) => {
+    firefoxCachedState = st;
+    applyAdblockState(st);
+  });
+}
+
 // Message API for popup
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     const state = await getState();
+    if (pendingBlockedIncrement > 0) {
+      state.blockedCount = (state.blockedCount || 0) + pendingBlockedIncrement;
+    }
 
     switch (message.type) {
       case 'GET_STATE': {
@@ -833,7 +1527,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       case 'TOGGLE_CONNECT': {
         // Disconnect path
         if (state.connected) {
+          clearTimeout(autoDisconnectTimer);
+          autoDisconnectTimer = null;
           state.connected = false;
+          state.autoConnected = false;
           state.connectedAt = null;
           await saveState(state);
           await applyProxyState(state);
@@ -865,6 +1562,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }
 
         state.connected = true;
+        state.autoConnected = false; // Manual connect overrides auto-disconnect
         state.connectedAt = Date.now();
         await saveState(state);
         const result = await applyProxyState(state);
@@ -917,12 +1615,100 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           await syncEngineConfig(next);
         }
 
+        if (
+          'adblockEnabled' in patch ||
+          'trackerBlockEnabled' in patch ||
+          'adblockAllowlist' in patch ||
+          'phishingShieldEnabled' in patch ||
+          'phishingAllowlist' in patch ||
+          'customBlocklist' in patch ||
+          'communityFilterEnabled' in patch
+        ) {
+          await applyAdblockState(next);
+        }
+
+        if (patch.autoConnectEnabled) {
+          evaluateAutoConnect();
+        }
+
         const result = await applyProxyState(next);
         const engine =
           next.engineMode === 'splitwire'
             ? await checkLocalEngine(next.splitwireControlPort)
             : { online: null, latencyMs: null };
         sendResponse({ ...result, state: next, engine });
+        break;
+      }
+
+      case 'ADD_CUSTOM_BLOCK': {
+        const rawClean = sanitizeDomain(message.domain);
+        const clean = rawClean ? rawClean.replace(/^www\./, '') : null;
+        if (!clean) {
+          sendResponse({ ok: false, error: 'INVALID' });
+          return;
+        }
+        if (state.customBlocklist.includes(clean)) {
+          sendResponse({ ok: false, error: 'EXISTS', state });
+          return;
+        }
+        state.customBlocklist.unshift(clean);
+        await saveState(state);
+        await applyAdblockState(state);
+        sendResponse({ ok: true, domain: clean, state });
+        break;
+      }
+
+      case 'REMOVE_CUSTOM_BLOCK': {
+        const target = (message.domain || '').toLowerCase().trim().replace(/^www\./, '');
+        state.customBlocklist = state.customBlocklist.filter(
+          (d) => d.toLowerCase().trim().replace(/^www\./, '') !== target
+        );
+        await saveState(state);
+        await applyAdblockState(state);
+        sendResponse({ ok: true, state });
+        break;
+      }
+
+      case 'ALLOW_PHISHING_SITE': {
+        const clean = sanitizeDomain(message.domain);
+        if (clean && !state.phishingAllowlist.includes(clean)) {
+          state.phishingAllowlist.unshift(clean);
+          await saveState(state);
+          await applyAdblockState(state);
+        }
+        sendResponse({ ok: true, state });
+        break;
+      }
+
+      case 'UPDATE_COMMUNITY_FILTERS': {
+        const res = await refreshCommunityFilters();
+        sendResponse(res);
+        break;
+      }
+
+      case 'TOGGLE_ADBLOCK_SITE': {
+        const clean = sanitizeDomain(message.domain);
+        if (!clean) {
+          sendResponse({ ok: false, error: 'INVALID' });
+          return;
+        }
+        const exists = state.adblockAllowlist.includes(clean);
+        if (exists) {
+          state.adblockAllowlist = state.adblockAllowlist.filter((d) => d !== clean);
+        } else {
+          state.adblockAllowlist.unshift(clean);
+        }
+        await saveState(state);
+        await applyAdblockState(state);
+        sendResponse({ ok: true, paused: !exists, domain: clean, state });
+        break;
+      }
+
+      case 'REMOVE_ADBLOCK_ALLOWLIST': {
+        state.adblockAllowlist = state.adblockAllowlist.filter((d) => d !== message.domain);
+        await saveState(state);
+        await applyAdblockState(state);
+        sendResponse({ ok: true, state });
         break;
       }
 
